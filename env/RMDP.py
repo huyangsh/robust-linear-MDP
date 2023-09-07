@@ -1,6 +1,8 @@
 import numpy as np
-import scipy.optimize.minimize as minimize
+import scipy as sp
+from scipy.optimize import minimize
 import random
+from functools import partial
 from copy import deepcopy
 from math import exp, log
 
@@ -42,50 +44,81 @@ class RMDP(Env):
 
 
     # Utility: robust policy evaluation.
-    def _index(self, s, a):
-        return (s-1)*self.num_actions + a
+    def _index_Q(self, s, a):
+        return s*self.num_actions + a
     
     def _index_xi(self, s, a):
-        return (self.num_states+s-1)*self.num_actions + a
+        return (self.num_states+s)*self.num_actions + a
+    
+    def DP_Q(self, pi, thres=1e-8):
+        assert pi.shape == (self.num_states, self.num_actions)
+        V = np.zeros(shape=(self.num_states,), dtype=np.float64)
 
-    def robust_Q(self, pi):
+        diff = thres + 1
+        while diff > thres:
+            V_prev = V
+            V = np.zeros(shape=(self.num_states,), dtype=np.float64)
+
+            for s in self.states:
+                for a in self.actions:
+                    V_pi_cum = 0
+                    for s_ in self.states:
+                        V_pi_cum += self.prob[s,a,s_] * V_prev[s_]
+
+                    V[s] += pi[s,a] * (self.reward[s,a] + self.gamma * V_pi_cum)
+            
+            diff = np.linalg.norm(V - V_prev)
+        
+        Q = np.zeros(shape=(self.num_states, self.num_actions), dtype=np.float64)
+        for s in self.states:
+            for a in self.actions:
+                V_pi_cum = 0
+                for s_ in self.states:
+                    V_pi_cum += self.prob[s,a,s_] * V[s_]
+
+                Q[s,a] = self.reward[s,a] + self.gamma * V_pi_cum
+        
+        return Q
+
+    def robust_Q(self, pi, eps=0):
         def func(x):
             J = 0
             for s in self.states:
                 for a in self.actions:
-                    J += self.distr_init[s] * pi[s,a] * x[self._index(s,a)]
+                    J += self.distr_init[s] * pi[s,a] * x[self._index_Q(s,a)]
             return J
         
+        def constr_sa(s, a, x):
+            tot = 0
+            for s_ in self.states:
+                for a_ in self.actions:
+                    tot += pi[s_,a_] * x[self._index_Q(s_,a_)] * self.prob[s,a,s_]
+
+            return x[self._index_Q(s,a)] - self.reward[s,a] - self.gamma * tot + x[self._index_xi(s,a)]
+        
+        def constr_xi(x):
+            tot = 0
+            for s in self.states:
+                for a in self.actions:
+                    tot += x[self._index_xi(s,a)] ** 2
+            return eps - tot
+
         constraints = []
         for s in self.states:
             for a in self.actions:
-                def constr_sa(x):
-                    temp = 0
-                    for s_ in self.states:
-                        for a_ in self.actions:
-                            temp += pi[s_,a_] * x[self._index(s_,a_)] * self.prob[s,a,s_]
-
-                    return x[self.index(s,a)] - self.reward[s,a] - self.gamma * temp + x[self._index_xi(s,a)]
-                
                 constraints.append({
                     "type": "ineq",
-                    "fun": constr_sa
-                })
-
-        def constr_xi(x):
-            expr = 0
-            for s in self.states:
-                for a in self.actions:
-                    expr += x[self._index_xi(s,a)] ** 2
-            return self.eps - expr
-                
+                    "fun": partial(constr_sa, s, a)
+                })    
         constraints.append({
             "type": "ineq",
             "fun": constr_xi
         })
         
-        res = minimize(func, (2, 0), method='SLSQP', constraints=constraints)
-    
+        res = minimize(
+            func, np.zeros(shape=(2*self.num_states*self.num_actions,)), constraints=constraints,
+            method='SLSQP', tol=1e-10, options={"ftol": 1e-10, "eps": 1e-10})
+        return res.x
 
     # Utility: calculate state-visit frequency.
     def _transit(self, distr, prob, pi):
