@@ -4,7 +4,7 @@ import random
 from . import Agent
 
 
-class PolicyGradientAgent(Agent):
+class SoftmaxPolicyGradientAgent(Agent):
     def __init__(self, env, eps, eta, T_est, thres):
         # Environment information.
         self.env            = env
@@ -24,33 +24,37 @@ class PolicyGradientAgent(Agent):
         self.thres  = thres
 
         # Internal state.
-        self.pi = None
+        self.theta  = None
+        self.pi     = None
     
 
     # Core functions.
-    def reset(self, pi_init):
-        assert pi_init.shape == (self.num_states, self.num_actions)
-        self.pi = pi_init
-        
+    def _get_pi(self):
+        pi = np.exp(self.theta)
+        Z  = pi.sum(axis=1)[:,np.newaxis]
+        self.pi = pi / Z
         return self.pi
+
+    def reset(self, theta_init):
+        assert theta_init.shape == (self.num_states, self.num_actions)
+        self.theta = theta_init
+        
+        return self._get_pi()
     
     def update(self):
-        Q_pi = self.env.robust_Q(pi=self.pi, eps=self.eps)
-        Q_ref = self.env.DP_Q(pi=self.pi)
-        '''if np.linalg.norm((Q_pi-Q_ref).flatten()*self.pi.flatten()) > 1e-2:
-            print("\n", self.eps, self.pi, Q_pi, Q_ref)
-            input("WARNING > ")
-        '''
+        pi = self._get_pi()
+
+        Q_pi = self.env.robust_Q(pi=pi, eps=self.eps)
+
+        V_pi = (Q_pi*pi).sum(axis=1)[:, np.newaxis]
+        A_pi = Q_pi - V_pi
 
         d_pi = self.env.visit_freq(self.pi, T=self.T_est)[:, np.newaxis]
-        grad = Q_pi * d_pi / (1-self.env.gamma)
+        grad = d_pi * pi * A_pi / (1-self.env.gamma)
         assert grad.shape == (self.num_states, self.num_actions)
         
-        self.pi = self.pi + self.eta * grad
-        for s in self.env.states:
-            self.pi[s, :] = self._project(self.pi[s, :])
-        
-        return self.pi, {"Q_pi": Q_pi}
+        self.theta = self.theta + self.eta * grad
+        return pi, {"Q_pi": Q_pi}
 
     def select_action(self, state):
         return random.choices(self.actions, weights=self.pi[int(state),:])[0]

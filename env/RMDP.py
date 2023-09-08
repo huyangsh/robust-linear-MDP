@@ -117,8 +117,11 @@ class RMDP(Env):
         
         res = minimize(
             func, np.zeros(shape=(2*self.num_states*self.num_actions,)), constraints=constraints,
-            method='SLSQP', tol=1e-10, options={"ftol": 1e-10, "eps": 1e-10})
-        return res.x
+            method='SLSQP', tol=1e-8, options={"maxiter": 1000, "ftol": 1e-8, "eps": 1e-8}
+        )
+
+        return res.x[:self.num_states*self.num_actions].reshape((self.num_states, self.num_actions))
+
 
     # Utility: calculate state-visit frequency.
     def _transit(self, distr, prob, pi):

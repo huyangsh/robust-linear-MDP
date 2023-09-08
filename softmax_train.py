@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from tqdm import tqdm
 
-from agent import PolicyGradientAgent
+from agent import SoftmaxPolicyGradientAgent
 from env import RMDP, get_reward_src, build_toy_env
 from utils import print_float_list, print_float_matrix
 
@@ -32,9 +32,9 @@ eta = 0.01
 T   = int(5e4)
 print(f"learning rate: {eta}.")
 
-agent = PolicyGradientAgent(env, eps, eta, T_EST, THRES)
+agent = SoftmaxPolicyGradientAgent(env, eps, eta, T_EST, THRES)
 
-pi_init = np.ones(shape=(env.num_states, env.num_actions), dtype=np.float64) / env.num_actions
+pi_init = np.zeros(shape=(env.num_states, env.num_actions), dtype=np.float64)
 agent.reset(pi_init)
 
 eval_freq = 10
@@ -72,9 +72,9 @@ for i in range(4):
     ax.legend()
     ax.set_xlabel(f"State {i}")
     ax.set_ylabel(f"probability")
-fig.savefig(f"PG_policy_{eps:.2f}_{eta:.2f}.png", dpi=300)
+fig.savefig(f"softmax_policy_{eps:.2f}_{eta:.2f}.png", dpi=300)
 
 fig = plt.figure(figsize=(5,5))
 ax = fig.add_subplot(1,1,1)
 ax.plot(t_list, reward_list, label="$\varepsilon=0.2$")
-fig.savefig(f"PG_reward_{eps:.2f}_{eta:.2f}.png", dpi=300)
+fig.savefig(f"softmax_reward_{eps:.2f}_{eta:.2f}.png", dpi=300)
