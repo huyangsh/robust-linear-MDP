@@ -29,7 +29,7 @@ env = build_toy_env(reward_src, 0, gamma, THRES)
 test_env = build_toy_env(reward_src, p_perturb, gamma, THRES)
 
 eta = 0.01
-T   = int(5e4)
+T   = int(1e3)
 print(f"learning rate: {eta}.")
 
 agent = PolicyGradientAgent(env, eps, eta, T_EST, THRES)

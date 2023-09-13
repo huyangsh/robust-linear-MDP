@@ -91,7 +91,7 @@ class Pendulum(Env):
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)"""
 
 
-        # Environment parameters (discretiz actions).
+        # Environment parameters (discretized actions).
         self.dim_state = 3
         self.dim_action = 1
         self.num_actions = num_actions
