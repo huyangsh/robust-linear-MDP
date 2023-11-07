@@ -44,7 +44,8 @@ class SoftmaxPolicyGradientAgent(Agent):
     def update(self):
         pi = self._get_pi()
 
-        Q_pi = self.env.robust_Q(pi=pi, eps=self.eps)
+        #Q_pi = self.env.robust_Q(pi=pi, eps=self.eps)
+        Q_pi = self.env.robust_prob_Q(pi=pi, eps=self.eps)
 
         V_pi = (Q_pi*pi).sum(axis=1)[:, np.newaxis]
         A_pi = Q_pi - V_pi

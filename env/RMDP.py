@@ -50,6 +50,9 @@ class RMDP(Env):
     def _index_xi(self, s, a):
         return (self.num_states+s)*self.num_actions + a
     
+    def _index_delta(self, s, a, s_):
+        return self.num_states*self.num_actions + s*self.num_actions*self.num_states + a*self.num_states + s_
+
     def DP_Q(self, pi, thres=1e-8):
         assert pi.shape == (self.num_states, self.num_actions)
         V = np.zeros(shape=(self.num_states,), dtype=np.float64)
@@ -102,6 +105,11 @@ class RMDP(Env):
                 for a in self.actions:
                     tot += x[self._index_xi(s,a)] ** 2
             return eps - tot
+        
+        def box_lower_xi(s, a, x):
+            return eps + x[self._index_xi(s,a)]
+        def box_upper_xi(s, a, x):
+            return -x[self._index_xi(s,a)]
 
         constraints = []
         for s in self.states:
@@ -110,10 +118,20 @@ class RMDP(Env):
                     "type": "ineq",
                     "fun": partial(constr_sa, s, a)
                 })    
-        constraints.append({
+        """constraints.append({
             "type": "ineq",
             "fun": constr_xi
-        })
+        })"""
+        for s in self.states:
+            for a in self.actions:
+                constraints.append({
+                    "type": "ineq",
+                    "fun": partial(box_lower_xi, s, a)
+                })
+                constraints.append({
+                    "type": "ineq",
+                    "fun": partial(box_upper_xi, s, a)
+                })
         
         res = minimize(
             func, np.zeros(shape=(2*self.num_states*self.num_actions,)), constraints=constraints,
@@ -122,6 +140,64 @@ class RMDP(Env):
 
         return res.x[:self.num_states*self.num_actions].reshape((self.num_states, self.num_actions))
 
+
+    def robust_prob_Q(self, pi, eps=0):
+        def func(x):
+            J = 0
+            for s in self.states:
+                for a in self.actions:
+                    J += self.distr_init[s] * pi[s,a] * x[self._index_Q(s,a)]
+            return J
+        
+        def constr_sa(s, a, x):
+            tot = 0
+            for s_ in self.states:
+                for a_ in self.actions:
+                    tot += pi[s_,a_] * x[self._index_Q(s_,a_)] * (self.prob[s,a,s_] + x[self._index_delta(s,a,s_)])
+
+            return x[self._index_Q(s,a)] - self.reward[s,a] - self.gamma * tot 
+        
+        def constr_delta(s, a, x):
+            tot = 0
+            for s_ in self.states:
+                tot += x[self._index_delta(s,a,s_)]
+            return tot
+        
+        def box_lower_delta(s, a, s_, x):
+            return self.prob[s,a,s_] + x[self._index_delta(s,a,s_)]
+        def box_upper_delta(s, a, s_, x):
+            return 1 - self.prob[s,a,s_] - x[self._index_delta(s,a,s_)]
+
+        constraints = []
+        for s in self.states:
+            for a in self.actions:
+                constraints.append({
+                    "type": "ineq",
+                    "fun": partial(constr_sa, s, a)
+                })    
+                constraints.append({
+                    "type": "eq",
+                    "fun": partial(constr_delta, s, a)
+                })
+        for s in self.states:
+            for a in self.actions:
+                for s_ in self.states:
+                    constraints.append({
+                        "type": "ineq",
+                        "fun": partial(box_lower_delta, s, a, s_)
+                    })
+                    constraints.append({
+                        "type": "ineq",
+                        "fun": partial(box_upper_delta, s, a, s_)
+                    })
+        
+        res = minimize(
+            func, np.zeros(shape=((1+self.num_states)*self.num_states*self.num_actions,)), constraints=constraints,
+            method='SLSQP', tol=1e-8, options={"maxiter": 1000, "ftol": 1e-8, "eps": 1e-8}
+        )
+        print(res.message)
+
+        return res.x[:self.num_states*self.num_actions].reshape((self.num_states, self.num_actions))
 
     # Utility: calculate state-visit frequency.
     def _transit(self, distr, prob, pi):

@@ -26,6 +26,18 @@ def build_toy_env(reward_src, p_perturb, gamma, thres=1e-5):
             prob[s,a,(s+a-2)%num_states] = p_perturb
             prob[s,a,(s+a)%num_states]   = p_perturb
 
-    distr_init = np.ones(shape=(num_states,), dtype=np.float64) / num_states
+    distr_init = np.ones(shape=(num_states,), dtype=np.float32) / num_states
 
     return RMDP(num_states, num_actions, distr_init, reward, prob, gamma, thres)
+
+
+# Linear environment build functions.
+def get_linear_param(env_name):
+    if env_name == "Toy-4":
+        distr_init = np.ones(shape=(4,), dtype=np.float32) / 4
+        
+        return np.array([-10,2,1,2])
+    elif env_name == "Mixture":
+        pass
+    else:
+        raise NotImplementedError
