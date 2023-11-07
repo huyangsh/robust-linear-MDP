@@ -1,6 +1,6 @@
 import numpy as np
 from math import sin, cos, pi
-from . import RMDP
+from . import TabularMDP
 
 # Define reward_src vectors.
 def get_reward_src(env_name):
@@ -16,8 +16,8 @@ def build_toy_env(reward_src, p_perturb, gamma, thres=1e-5):
     num_states  = reward_src.shape[0]
     num_actions = 3    # 0 = left, 1 = stay, 2 = right.
     
-    reward = np.zeros(shape=(num_states,num_actions), dtype=np.float64)
-    prob = np.zeros(shape=(num_states,num_actions,num_states), dtype=np.float64)
+    reward = np.zeros(shape=(num_states,num_actions), dtype=np.float32)
+    prob = np.zeros(shape=(num_states,num_actions,num_states), dtype=np.float32)
     for s in range(num_states):
         for a in range(num_actions):
             reward[s,a] = reward_src[s]
@@ -28,15 +28,28 @@ def build_toy_env(reward_src, p_perturb, gamma, thres=1e-5):
 
     distr_init = np.ones(shape=(num_states,), dtype=np.float32) / num_states
 
-    return RMDP(num_states, num_actions, distr_init, reward, prob, gamma, thres)
+    return TabularMDP(num_states, num_actions, distr_init, reward, prob, gamma, thres)
 
 
 # Linear environment build functions.
 def get_linear_param(env_name):
     if env_name == "Toy-4":
         distr_init = np.ones(shape=(4,), dtype=np.float32) / 4
-        
-        return np.array([-10,2,1,2])
+        phi   = np.eye(N=12).reshape((4,3,12))
+        theta = np.array([-1,-1,-1,0.11,0.11,0.11,0.1,0.1,0.1,0.11,0.11,0.11])
+        mu    = np.array([
+            [0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0]
+        ])
+        mu_perturb = np.array([
+            [0.05, 0.90, 0.05, 0.90, 0.05, 0.00, 0.05, 0.00, 0.05, 0.00, 0.05, 0.90],
+            [0.00, 0.05, 0.90, 0.05, 0.90, 0.05, 0.90, 0.05, 0.00, 0.05, 0.00, 0.05],
+            [0.05, 0.00, 0.05, 0.00, 0.05, 0.90, 0.05, 0.90, 0.05, 0.90, 0.05, 0.00],
+            [0.90, 0.05, 0.00, 0.05, 0.00, 0.05, 0.00, 0.05, 0.90, 0.05, 0.90, 0.05]
+        ])
+        return distr_init, phi, theta, mu, mu_perturb
     elif env_name == "Mixture":
         pass
     else:

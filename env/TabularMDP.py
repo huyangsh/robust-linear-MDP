@@ -9,7 +9,7 @@ from math import exp, log
 from . import Env
 
 
-class RMDP(Env):
+class TabularMDP(Env):
     def __init__(self, num_states, num_actions, distr_init, reward, prob, gamma, thres=1e-5):
         assert distr_init.shape == (num_states,)
         assert reward.shape == (num_states, num_actions)
@@ -43,24 +43,41 @@ class RMDP(Env):
         return np.array([self.state], dtype=np.float32), reward, False, None    # Compatible with the OpenAI gym interface: done = False (non-episodic).
 
 
-    # Utility: robust policy evaluation.
-    def _index_Q(self, s, a):
-        return s*self.num_actions + a
-    
-    def _index_xi(self, s, a):
-        return (self.num_states+s)*self.num_actions + a
-    
-    def _index_delta(self, s, a, s_):
-        return self.num_states*self.num_actions + s*self.num_actions*self.num_states + a*self.num_states + s_
-
-    def DP_Q(self, pi, thres=1e-8):
-        assert pi.shape == (self.num_states, self.num_actions)
-        V = np.zeros(shape=(self.num_states,), dtype=np.float64)
+    # Utility: standard policy evaluation via DP.
+    def DP_opt(self, thres):
+        V = np.zeros(shape=(self.num_states,), dtype=np.float32)
 
         diff = thres + 1
         while diff > thres:
             V_prev = V
-            V = np.zeros(shape=(self.num_states,), dtype=np.float64)
+            V = np.zeros(shape=(self.num_states,), dtype=np.float32)
+
+            for s in self.states:
+                reward_max = None
+                for a in self.actions:
+                    V_pi_cum = 0
+                    for s_ in self.states:
+                        V_pi_cum += self.prob[s,a,s_] * V_prev[s_]
+
+                    if reward_max is None:
+                        reward_max = self.reward[s,a] + self.gamma*V_pi_cum
+                    else:
+                        reward_max = max(reward_max, self.reward[s,a] + self.gamma*V_pi_cum)
+                
+                V[s] = reward_max
+            
+            diff = np.linalg.norm(V - V_prev)
+        
+        return V
+    
+    def DP_pi(self, pi, thres=1e-6):
+        assert pi.shape == (self.num_states, self.num_actions)
+        V = np.zeros(shape=(self.num_states,), dtype=np.float32)
+
+        diff = thres + 1
+        while diff > thres:
+            V_prev = V
+            V = np.zeros(shape=(self.num_states,), dtype=np.float32)
 
             for s in self.states:
                 for a in self.actions:
@@ -72,7 +89,11 @@ class RMDP(Env):
             
             diff = np.linalg.norm(V - V_prev)
         
-        Q = np.zeros(shape=(self.num_states, self.num_actions), dtype=np.float64)
+        return V
+    
+    def V_to_Q(self, V):
+        assert V.shape == (self.num_states,)
+        Q = np.zeros(shape=(self.num_states, self.num_actions), dtype=np.float32)
         for s in self.states:
             for a in self.actions:
                 V_pi_cum = 0
@@ -82,6 +103,33 @@ class RMDP(Env):
                 Q[s,a] = self.reward[s,a] + self.gamma * V_pi_cum
         
         return Q
+    
+    def DP_Q(self, pi):
+        return self.V_to_Q(self.DP_pi(pi=pi))
+    
+    def Q_to_pi(self, Q):
+        assert pi.shape == (self.num_states, self.num_actions)
+        indices = np.argmax(Q, axis=1)[:,np.newaxis]
+        pi = np.zeros(shape=(self.num_states, self.num_actions), dtype=np.float32)
+        np.put_along_axis(pi, indices=indices, values=1, axis=1)
+        return pi
+    
+    def get_opt_pi(self):
+        V_opt  = self.DP_opt(thres=1e-6)
+        Q_opt  = self.V_to_Q(V_opt)
+        pi_opt = self.Q_to_pi(Q_opt)
+        return pi_opt
+
+
+    # Utility: robust policy evaluation.
+    def _index_Q(self, s, a):
+        return s*self.num_actions + a
+    
+    def _index_xi(self, s, a):
+        return (self.num_states+s)*self.num_actions + a
+    
+    def _index_delta(self, s, a, s_):
+        return self.num_states*self.num_actions + s*self.num_actions*self.num_states + a*self.num_states + s_
 
     def robust_Q(self, pi, eps=0):
         def func(x):
@@ -201,7 +249,7 @@ class RMDP(Env):
 
     # Utility: calculate state-visit frequency.
     def _transit(self, distr, prob, pi):
-        distr_new = np.zeros(shape=(self.num_states,), dtype=np.float64)
+        distr_new = np.zeros(shape=(self.num_states,), dtype=np.float32)
         for s in self.states:
             for a in self.actions:
                 for s_ in self.states:

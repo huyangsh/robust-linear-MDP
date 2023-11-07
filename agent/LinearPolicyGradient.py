@@ -4,8 +4,8 @@ import random
 from . import Agent
 
 
-class PolicyGradientAgent(Agent):
-    def __init__(self, env, eps, eta, T_est, thres):
+class LinearPolicyGradientAgent(Agent):
+    def __init__(self, env, eps, eta, T_est, T_Q, thres):
         # Environment information.
         self.env            = env
         
@@ -21,6 +21,7 @@ class PolicyGradientAgent(Agent):
         # Learning parameters.
         self.eta    = eta
         self.T_est  = T_est
+        self.T_Q    = T_Q
         self.thres  = thres
 
         # Internal state.
@@ -35,7 +36,7 @@ class PolicyGradientAgent(Agent):
         return self.pi
     
     def update(self):
-        Q_pi = self.env.robust_Q(pi=self.pi, eps=self.eps)
+        Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q, eps=self.eps)
         
         '''
         Q_ref = self.env.DP_Q(pi=self.pi)
@@ -44,7 +45,9 @@ class PolicyGradientAgent(Agent):
             input("WARNING > ")
         '''
 
-        d_pi = self.env.visit_freq(self.pi, T=self.T_est)[:, np.newaxis]
+        # d_pi = self.env.visit_freq(self.pi, T=self.T_est)[:, np.newaxis]
+        d_pi = self.env.robust_visit_freq(pi=self.pi, phi=phi_pi, T=self.T_est)[:, np.newaxis]
+
         grad = Q_pi * d_pi / (1-self.env.gamma)
         assert grad.shape == (self.num_states, self.num_actions)
         

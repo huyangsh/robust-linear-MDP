@@ -1,7 +1,7 @@
 import numpy as np
 import random
 
-from env import RMDP, get_reward_src, build_toy_env
+from env import TabularMDP, get_reward_src, build_toy_env
 from utils import print_float_list, print_float_matrix
 
 THRES = 1e-5

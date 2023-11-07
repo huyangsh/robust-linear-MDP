@@ -6,7 +6,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 from agent import PolicyGradientAgent
-from env import RMDP, get_reward_src, build_toy_env
+from env import TabularMDP, get_reward_src, build_toy_env
 from utils import print_float_list, print_float_matrix
 
 
@@ -34,7 +34,7 @@ print(f"learning rate: {eta}.")
 
 agent = PolicyGradientAgent(env, eps, eta, T_EST, THRES)
 
-pi_init = np.ones(shape=(env.num_states, env.num_actions), dtype=np.float64) / env.num_actions
+pi_init = np.ones(shape=(env.num_states, env.num_actions), dtype=np.float32) / env.num_actions
 agent.reset(pi_init)
 
 eval_freq = 10
@@ -58,7 +58,7 @@ try:
             for rep in range(test_reps):
                 cur_rewards.append( test_env.eval(agent.select_action, T_eval=test_T) )
             tqdm.write(f"rewards:\n{print_float_list(cur_rewards)}\n\n")
-            reward_list.append(np.array(cur_rewards, dtype=np.float64).mean())
+            reward_list.append(np.array(cur_rewards, dtype=np.float32).mean())
 except KeyboardInterrupt:
     pass
 

@@ -1,6 +1,6 @@
 from .Env import Env
 
-from .RMDP import RMDP
+from .TabularMDP import TabularMDP
 from .LinearMDP import LinearMDP
 from .CartPole import CartPole
 from .Pendulum import Pendulum
