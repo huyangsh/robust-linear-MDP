@@ -51,6 +51,26 @@ def get_linear_param(env_name):
         ])
         return distr_init, phi, theta, mu, mu_perturb
     elif env_name == "Mixture":
-        pass
+        distr_init = np.array([1/3,1/3,1/3], dtype=np.float32)
+        phi   = np.array([
+            [1,   0,   0],
+            [2/3, 1/3, 0],
+            [1/3, 2/3, 0],
+            [1/6, 1/2, 1/3],
+            [0,   1/2, 1/2],
+            [0,   0,   1]
+        ]).reshape((3,2,3))
+        theta = np.array([-1,1,0.2])
+        mu    = np.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ])
+        mu_perturb = np.array([
+            [1, 1/3, 0],
+            [0, 2/3, 0],
+            [0, 0, 1]
+        ])
+        return distr_init, phi, theta, mu, mu_perturb
     else:
         raise NotImplementedError

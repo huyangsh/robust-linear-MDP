@@ -35,7 +35,7 @@ def print_float_list(lst, fmt=".4g"):
     msg = msg[:-2] + "]"
     return msg
 
-def print_float_matrix(mat, fmt=".4f"):
+def print_float_matrix(mat, fmt=".4g"):
     x, y = mat.shape
 
     msg = ""

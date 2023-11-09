@@ -112,6 +112,11 @@ class LinearMDP(Env):
         
         return Q
     
+    def Q_to_V(self, Q, pi):
+        assert Q.shape == (self.num_states, self.num_actions)
+        assert pi.shape == (self.num_states, self.num_actions)
+        return np.sum(Q*pi, axis=1)
+    
     def Q_to_pi(self, Q):
         assert Q.shape == (self.num_states, self.num_actions)
         indices = np.argmax(Q, axis=1)[:,np.newaxis]
@@ -127,7 +132,7 @@ class LinearMDP(Env):
     
 
     # Utility: robust policy evaluation.
-    def robust_Q(self, pi, T, eps=0):
+    def robust_Q(self, pi, T):
         # Note that the following does not change across iterations.
         const_eta = np.sum((self.distr_init[:,np.newaxis] * pi)[:,:,np.newaxis] * self.phi, axis=(0,1))
         # The perturbation radius is still eps_phi.
@@ -136,7 +141,8 @@ class LinearMDP(Env):
         for t in range(T):
             # Note that the following does change across iterations.
             const_xi = self.theta + self.mu.T @ V_t
-            eps_xi = self.eps_theta + self.gamma* np.sum(abs(V_t)) * self.eps_mu
+            V_t_clipped = np.minimum(abs(V_t), np.ones(shape=(self.num_states,)) / self.gamma)
+            eps_xi = self.eps_theta + self.gamma* np.sum(V_t_clipped) * self.eps_mu
 
             # Optimization step: use the reduced form.
             def func(x):

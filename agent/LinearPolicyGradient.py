@@ -5,7 +5,7 @@ from . import Agent
 
 
 class LinearPolicyGradientAgent(Agent):
-    def __init__(self, env, eps, eta, T_est, T_Q, thres):
+    def __init__(self, env, eta, T_est, T_Q, thres):
         # Environment information.
         self.env            = env
         
@@ -16,7 +16,6 @@ class LinearPolicyGradientAgent(Agent):
 
         self.reward         = env.reward
         self.gamma          = env.gamma
-        self.eps            = eps
 
         # Learning parameters.
         self.eta    = eta
@@ -36,14 +35,7 @@ class LinearPolicyGradientAgent(Agent):
         return self.pi
     
     def update(self):
-        Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q, eps=self.eps)
-        
-        '''
-        Q_ref = self.env.DP_Q(pi=self.pi)
-        if np.linalg.norm((Q_pi-Q_ref).flatten()*self.pi.flatten()) > 1e-2:
-            print("\n", self.eps, self.pi, Q_pi, Q_ref)
-            input("WARNING > ")
-        '''
+        Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q)
 
         # d_pi = self.env.visit_freq(self.pi, T=self.T_est)[:, np.newaxis]
         d_pi = self.env.robust_visit_freq(pi=self.pi, phi=phi_pi, T=self.T_est)[:, np.newaxis]
@@ -55,7 +47,7 @@ class LinearPolicyGradientAgent(Agent):
         for s in self.env.states:
             self.pi[s, :] = self._project(self.pi[s, :])
         
-        return self.pi, {"Q_pi": Q_pi}
+        return self.pi, {"Q_pi": Q_pi, "phi_pi": phi_pi}
 
     def select_action(self, state):
         return random.choices(self.actions, weights=self.pi[int(state),:])[0]
@@ -68,23 +60,41 @@ class LinearPolicyGradientAgent(Agent):
     
 
     # Utility: projection onto the probability simplex.
-    def _l2_project(self, r, a, b):
-        # Implements l2-projection onto the simplex:
-        #   min_y  ||r-x||^2
+    def _l2_project_bounded(self, v, a, b):
+        # Implements l2-projection onto the simplex with bounds:
+        #   min_x  ||v-x||^2
         #   s.t.   1^T x = 1
         #          a <= x <= b
         # REF: http://www.ryanhmckenna.com/2019/10/projecting-onto-probability-simplex.html.
         assert (a.sum()<=1) and (b.sum()>=1) and np.all(a<=b), "Error: projection infeasible."
-        lambdas = np.append(a-r, b-r)
+        lambdas = np.append(a-v, b-v)
         idx = np.argsort(lambdas)
         lambdas = lambdas[idx]
-        active = np.cumsum((idx < r.size)*2 - 1)[:-1]
+        active = np.cumsum((idx < v.size)*2 - 1)[:-1]
         diffs = np.diff(lambdas, n=1)
         totals = a.sum() + np.cumsum(active*diffs)
         i = np.searchsorted(totals, 1.0)
         lam = (1 - totals[i]) / active[i] + lambdas[i+1]
-        return np.clip(r + lam, a, b)
+        return np.clip(v + lam, a, b)
+    
+    def _l2_project(self, v):
+        # Implements l2-projection onto the simplex.
+        #   min_x  ||v-x||^2
+        #   s.t.   1^T x = 1
+        #          x >= 0
+        # REF: https://arxiv.org/abs/1309.1541 and https://stanford.edu/~jduchi/projects/DuchiShSiCh08.pdf.
+        # WARNING: numerical issues exist. Be sure to add numbers in similar magnitude first.
+        n = v.shape[0]
+        u = np.sort(v)[::-1]
+        u_sum = np.cumsum(u)
+        ind = np.arange(n) + 1
+        cond = (u - u_sum/ind + 1/ind) > 0
+        rho = ind[cond][-1]
+        lamda_1 = -u_sum[cond][-1] / float(rho)
+        lamda_2 = 1 / float(rho)
+        return np.maximum(v + lamda_1 + lamda_2, 0)
 
     def _project(self, x):
         assert x.shape == (self.env.num_actions,)
-        return self._l2_project(x, np.zeros_like(x), np.ones_like(x))
+        # return self.projection_simplex_sort(x,)
+        return self._l2_project(x)
