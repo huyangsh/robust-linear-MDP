@@ -22,12 +22,13 @@ np.random.seed(seed)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 GAMMA     = 0.95
-EPS_PHI   = 0.01
+EPS_PHI   = 0
 EPS_THETA = 0
-EPS_MU    = 0.05
+EPS_MU    = 0
+USE_DUAL  = False
 
 eta = 0.02
-T   = int(1e3)
+T   = int(5e3)
 print(f"learning rate: {eta}.")
 
 
@@ -46,7 +47,7 @@ reward_perturb = test_env.distr_init @ test_env.DP_pi(pi=pi_perturb)
 tqdm.write(f"pi_nominal:\n{print_float_matrix(pi_nominal.T)}\nreward = {reward_nominal}.\n")
 tqdm.write(f"pi_perturb:\n{print_float_matrix(pi_perturb.T)}\nreward = {reward_perturb}.")
 
-agent = LinearPolicyGradientAgent(env, eta, T_EST, T_Q, THRES)
+agent = LinearPolicyGradientAgent(env, eta, T_EST, T_Q, THRES, use_dual=USE_DUAL)
 
 pi_init = np.ones(shape=(env.num_states, env.num_actions), dtype=np.float32) / env.num_actions
 agent.reset(pi_init)

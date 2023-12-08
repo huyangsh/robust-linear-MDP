@@ -171,6 +171,49 @@ class LinearMDP(Env):
             assert V_t.shape[0] == self.num_states
 
         return Q_t, phi_t
+    
+    def robust_Q_dual(self, pi, T):
+        # Note that the following does not change across iterations.
+        const_eta = np.sum((self.distr_init[:,np.newaxis] * pi)[:,:,np.newaxis] * self.phi, axis=(0,1))
+        # The perturbation radius is still eps_phi.
+
+        V_t = np.zeros(shape=(self.num_states,), dtype=np.float32)
+        for t in range(T):
+            # Note that the following does change across iterations.
+            const_xi = self.theta + self.mu.T @ V_t
+            V_t_clipped = np.minimum(abs(V_t), np.ones(shape=(self.num_states,)) / self.gamma)
+            eps_xi = self.eps_theta + self.gamma* np.sum(V_t_clipped) * self.eps_mu
+
+            # Optimization step: use the reduced form.
+            """
+            def func(x, alpha):
+                obj = (const_xi + x[:self.dim_feature]) @ (const_eta + x[self.dim_feature:])
+                obj += alpha * x[:self.dim_feature] @ x[:self.dim_feature]
+                obj += alpha * x[self.dim_feature:] @ x[self.dim_feature:]
+                return obj
+            
+            alpha = max(200, 200 * np.linalg.norm(const_xi) * np.linalg.norm(const_eta))
+            res = minimize(
+                partial(func, alpha=alpha), np.zeros(shape=(2*self.dim_feature,)), 
+                method='BFGS', tol=1e-8, options={"maxiter": 1000, "gtol": 1e-8, "eps": 1e-8}
+            )
+
+            xi_t = res.x[:self.dim_feature]
+            eta_t = res.x[self.dim_feature:]
+            """
+
+            alpha = 20 * np.linalg.norm(const_xi) * np.linalg.norm(const_eta)
+            xi_t = - (2*alpha*const_eta - const_xi) / (4*alpha*alpha-1)
+            eta_t = - (2*alpha*const_xi - const_eta) / (4*alpha*alpha-1)
+
+            # Update omega and V.
+            omega_t = self.theta + self.gamma * self.mu.T @ V_t + xi_t
+            phi_t   = self.phi + eta_t
+            Q_t     = phi_t @ omega_t
+            V_t     = np.sum(Q_t * pi, axis=1)
+            assert V_t.shape[0] == self.num_states
+
+        return Q_t, phi_t
 
 
     # Utility: calculate state-visit frequency.

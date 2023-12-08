@@ -5,7 +5,7 @@ from . import Agent
 
 
 class LinearPolicyGradientAgent(Agent):
-    def __init__(self, env, eta, T_est, T_Q, thres):
+    def __init__(self, env, eta, T_est, T_Q, thres, use_dual=False):
         # Environment information.
         self.env            = env
         
@@ -17,6 +17,8 @@ class LinearPolicyGradientAgent(Agent):
         self.reward         = env.reward
         self.gamma          = env.gamma
 
+        self.use_dual       = use_dual
+
         # Learning parameters.
         self.eta    = eta
         self.T_est  = T_est
@@ -24,28 +26,47 @@ class LinearPolicyGradientAgent(Agent):
         self.thres  = thres
 
         # Internal state.
-        self.pi = None
+        self.pi      = None
+
+        self.use_NPG = True
+        self.theta   = np.zeros(shape=(self.num_states, self.num_actions), dtype=np.float32)
     
 
     # Core functions.
     def reset(self, pi_init):
         assert pi_init.shape == (self.num_states, self.num_actions)
         self.pi = pi_init
+
+        if self.use_NPG:
+            self.theta = np.log(self.pi)
         
         return self.pi
     
     def update(self):
-        Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q)
+        if self.use_dual:
+            Q_pi, phi_pi = self.env.robust_Q_dual(pi=self.pi, T=self.T_Q)
+        else:
+            Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q)
 
         # d_pi = self.env.visit_freq(self.pi, T=self.T_est)[:, np.newaxis]
-        d_pi = self.env.robust_visit_freq(pi=self.pi, phi=phi_pi, T=self.T_est)[:, np.newaxis]
+        if self.use_NPG:
+            # Natural policy gradient via soft-max parametrization.
+            V_pi = np.sum(Q_pi*self.pi, axis=1)[:, np.newaxis]
+            self.theta = self.theta + self.eta / (1-self.gamma) * (Q_pi - V_pi)
 
-        grad = Q_pi * d_pi / (1-self.env.gamma)
-        assert grad.shape == (self.num_states, self.num_actions)
-        
-        self.pi = self.pi + self.eta * grad
-        for s in self.env.states:
-            self.pi[s, :] = self._project(self.pi[s, :])
+            exp_theta = np.exp(self.theta)
+            exp_theta_sum = np.sum(exp_theta, axis=1)[:, np.newaxis]
+            self.pi = np.divide(exp_theta, exp_theta_sum)
+        else:
+            # Direct-parametrization policy gradient.
+            d_pi = self.env.robust_visit_freq(pi=self.pi, phi=phi_pi, T=self.T_est)[:, np.newaxis]
+
+            grad = Q_pi * d_pi / (1-self.env.gamma)
+            assert grad.shape == (self.num_states, self.num_actions)
+            
+            self.pi = self.pi + self.eta * grad
+            for s in self.env.states:
+                self.pi[s, :] = self._project(self.pi[s, :])
         
         return self.pi, {"Q_pi": Q_pi, "phi_pi": phi_pi}
 
