@@ -5,7 +5,7 @@ from . import Agent
 
 
 class LinearPolicyGradientAgent(Agent):
-    def __init__(self, env, eta, T_est, T_Q, thres, use_dual=False):
+    def __init__(self, env, eta, T_est, T_Q, thres, use_SDP=False):
         # Environment information.
         self.env            = env
         
@@ -17,7 +17,7 @@ class LinearPolicyGradientAgent(Agent):
         self.reward         = env.reward
         self.gamma          = env.gamma
 
-        self.use_dual       = use_dual
+        self.use_SDP       = use_SDP
 
         # Learning parameters.
         self.eta    = eta
@@ -43,8 +43,8 @@ class LinearPolicyGradientAgent(Agent):
         return self.pi
     
     def update(self):
-        if self.use_dual:
-            Q_pi, phi_pi = self.env.robust_Q_dual(pi=self.pi, T=self.T_Q)
+        if self.use_SDP:
+            Q_pi, phi_pi = self.env.robust_Q_SDP(pi=self.pi, T=self.T_Q)
         else:
             Q_pi, phi_pi = self.env.robust_Q(pi=self.pi, T=self.T_Q)
 

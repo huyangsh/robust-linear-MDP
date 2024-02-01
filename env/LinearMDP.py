@@ -1,5 +1,6 @@
 import numpy as np
 import scipy as sp
+import cvxpy as cp
 from scipy.optimize import minimize
 import random
 from functools import partial
@@ -11,7 +12,7 @@ from . import Env
 
 class LinearMDP(Env):
     def __init__(self, distr_init, phi, theta, mu, gamma, eps_phi=0, eps_theta=0, eps_mu=0, thres=1e-5):
-        self.num_states, self.num_actions, self.dim_feature  = phi.shape
+        self.num_states, self.num_actions, self.dim_feature = phi.shape
         assert distr_init.shape == (self.num_states,)
         assert theta.shape == (self.dim_feature,)
         assert mu.shape == (self.num_states, self.dim_feature)
@@ -172,7 +173,90 @@ class LinearMDP(Env):
 
         return Q_t, phi_t
     
+    def robust_Q_SDP(self, pi, T):
+        # Note that the following does not change across iterations.
+        const_eta = np.sum((self.distr_init[:,np.newaxis] * pi)[:,:,np.newaxis] * self.phi, axis=(0,1))
+        # The perturbation radius is still eps_phi.
+
+        V_t = np.zeros(shape=(self.num_states,), dtype=np.float32)
+        for t in range(T):
+            # Note that the following does change across iterations.
+            const_xi = self.theta + self.gamma * self.mu.T @ V_t
+            V_t_clipped = np.minimum(abs(V_t), np.ones(shape=(self.num_states,)) / (1-self.gamma))
+            eps_xi = self.eps_theta + self.gamma * np.sum(V_t_clipped) * self.eps_mu
+
+            # Optimization step: reduction to SDP.
+            n = self.dim_feature
+            A = np.vstack([
+                np.hstack([np.zeros(shape=(n,n)), np.eye(N=n)]),
+                np.hstack([np.eye(N=n), np.zeros(shape=(n,n))])
+            ]) * 0.5
+            beta = np.hstack([const_eta.flatten(), const_xi.flatten()])[:, np.newaxis] * 0.5
+
+            C = np.vstack([
+                np.hstack([A, beta]),
+                np.hstack([beta.T, [[0]]])
+            ])
+
+            Cx = sp.linalg.block_diag(np.eye(N=n), np.zeros(shape=(n,n)), [-eps_xi**2])
+            Cy = sp.linalg.block_diag(np.zeros(shape=(n,n)), np.eye(N=n), [-self.eps_phi**2])
+            C0 = sp.linalg.block_diag(np.zeros(shape=(2*n,2*n)), [1])
+            # Create a symmetric matrix variable.
+            X = cp.Variable((2*n+1,2*n+1), symmetric=True)
+            # Create constraints.
+            constraints = [
+                X >> 0,  # The operator >> denotes matrix inequality.
+                cp.trace(Cx @ X) <= 0,
+                cp.trace(Cy @ X) <= 0,
+                cp.trace(C0 @ X) == 1
+            ]  
+            problem = cp.Problem(
+                cp.Minimize(cp.trace(C @ X)),
+                constraints
+            )
+            problem.solve()
+
+            z = X.value[-1, :-1]
+            xi_t = z[:n]
+            eta_t = z[n:]
+
+
+            """
+            # debug
+            def func(x):
+                return const_eta @ x - self.eps_phi * np.linalg.norm(const_xi + x)
+            
+            def constr_ball(x):
+                return eps_xi**2 - x @ x
+
+            constraints = [{
+                "type": "ineq",
+                "fun": constr_ball
+            }]
+            res = minimize(
+                func, np.zeros(shape=(self.dim_feature,)), constraints=constraints,
+                method='SLSQP', tol=1e-8, options={"maxiter": 1000, "ftol": 1e-8, "eps": 1e-8}
+            )
+            print(f"Primal = {res.fun}, SDP = {problem.value + (const_xi*const_eta).sum()}.")
+            input(np.sum((const_xi+xi_t)*(const_eta+eta_t)))
+            # ====
+            """
+
+
+            
+            # Update omega and V.
+            omega_t = const_xi + xi_t
+            phi_t   = self.phi + eta_t
+            Q_t     = phi_t @ omega_t
+            V_t     = np.sum(Q_t * pi, axis=1)
+            assert V_t.shape[0] == self.num_states
+
+        return Q_t, phi_t
+
+
     def robust_Q_dual(self, pi, T):
+        # WARNING: deprecated. The dual formulation is no longer used!
+
         # Note that the following does not change across iterations.
         const_eta = np.sum((self.distr_init[:,np.newaxis] * pi)[:,:,np.newaxis] * self.phi, axis=(0,1))
         # The perturbation radius is still eps_phi.
@@ -183,24 +267,6 @@ class LinearMDP(Env):
             const_xi = self.theta + self.mu.T @ V_t
             V_t_clipped = np.minimum(abs(V_t), np.ones(shape=(self.num_states,)) / self.gamma)
             eps_xi = self.eps_theta + self.gamma* np.sum(V_t_clipped) * self.eps_mu
-
-            # Optimization step: use the reduced form.
-            """
-            def func(x, alpha):
-                obj = (const_xi + x[:self.dim_feature]) @ (const_eta + x[self.dim_feature:])
-                obj += alpha * x[:self.dim_feature] @ x[:self.dim_feature]
-                obj += alpha * x[self.dim_feature:] @ x[self.dim_feature:]
-                return obj
-            
-            alpha = max(200, 200 * np.linalg.norm(const_xi) * np.linalg.norm(const_eta))
-            res = minimize(
-                partial(func, alpha=alpha), np.zeros(shape=(2*self.dim_feature,)), 
-                method='BFGS', tol=1e-8, options={"maxiter": 1000, "gtol": 1e-8, "eps": 1e-8}
-            )
-
-            xi_t = res.x[:self.dim_feature]
-            eta_t = res.x[self.dim_feature:]
-            """
 
             alpha = 20 * np.linalg.norm(const_xi) * np.linalg.norm(const_eta)
             xi_t = - (2*alpha*const_eta - const_xi) / (4*alpha*alpha-1)

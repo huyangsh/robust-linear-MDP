@@ -36,7 +36,8 @@ def get_linear_param(env_name):
     if env_name == "Toy-4":
         distr_init = np.ones(shape=(4,), dtype=np.float32) / 4
         phi   = np.eye(N=12).reshape((4,3,12))
-        theta = np.array([-1,-1,-1,0.11,0.11,0.11,0.1,0.1,0.1,0.11,0.11,0.11])
+        # theta = np.array([-1,-1,-1,0.11,0.11,0.11,0.1,0.1,0.1,0.11,0.11,0.11])
+        theta = np.array([0,0,0,0.9,0.9,0.9,0.89,0.89,0.89,0.91,0.91,0.91])
         mu    = np.array([
             [0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1],
             [0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
